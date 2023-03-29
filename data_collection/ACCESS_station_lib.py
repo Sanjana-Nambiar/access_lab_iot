@@ -20,6 +20,7 @@ You should have received a copy of the GNU General Public License along with
 '''
 
 
+import random
 import serial
 import pigpio
 import time
@@ -30,6 +31,8 @@ from adafruit_bme280 import advanced as adafruit_bme280
 # pip3 install adafruit-circuitpython-bme280
 import adafruit_ms8607
 # pip3 install adafruit-circuitpython-ms8607
+import adafruit_scd30
+# pip install adafruit-circuitpython-scd30
 import board
 import busio
 import sys
@@ -245,7 +248,7 @@ class Beseecher:
         Have a .SENSOR attribute which will describe the things this sensor
             measures (i.e particulate matter, air sensor etc)
         Have a .TYPE attribute which describes the model of the sensor
-            (i.e nextpm, bme280)
+            (i.e nextpm, bme280, scd30)
         Have a .index attribute which describes the index of that given sensor.
             If there are multiple sensors of the same .SENSOR attribute, this
             differentiates them at the time of data collection
@@ -759,6 +762,63 @@ class MS8607beseecher(Beseecher):
             'pressure': prssr
         }
 
+#########
+
+class SCD30beseecher(Beseecher):
+    '''
+    wrapper class for the CO2-temperature-humidity sensor ms8607
+    since we already have ms8607 giveing the temperature and humidity, we will be using scd30 for co2 only
+    requires the package adafruit-circuitpython-scd30
+    '''
+    def __init__(self,
+                 i2c: busio.I2C = None,
+                 index: int = 0
+                 ) -> None:
+        '''
+        Initializes sensor using the i2c bus of the raspberry pi
+        @param i2c -> board.I2C() for the raspberry pi
+        @param index index in array of air_sensors this sensor should take
+        '''
+        super().__init__('co2_sensor', 'scd30', index)
+
+        # init new i2c if needed
+        if i2c is None:
+            i2c = busio.I2C(board.SCL, board.SDA)
+
+        self.i2c = i2c
+        self.sensor = adafruit_scd30.SCD30(i2c, address=0x61)
+
+    def measure(self) -> dict:
+        '''
+        Collect all the measurements from the sensor
+        @return dictionary of all measurements collected
+        '''
+
+        co2 = self.sensor.CO2
+
+        duration = 5 # minutes
+        interval = 30 # seconds
+
+        num_readings = int(duration * 60 / interval)
+        co2_values = []
+
+        for i in range(num_readings):
+            co2_value = random.uniform(400, 800)
+            co2_values.append(co2_value)
+            time.sleep(interval)
+
+        avg_co2 = sum(co2_values)/num_readings
+        std_dev = (sum([(x - avg_co2) ** 2 for x in co2_values]) / num_readings) ** 0.5
+        std_err = std_dev / (num_readings ** 0.5)
+
+        return {
+            'type': self.TYPE,
+            'sensor': f'{self.SENSOR}{self.index}',
+            'CO2': co2,
+        }
+
+
+########
 
 class ErrorBeseecher(Beseecher):
     '''
